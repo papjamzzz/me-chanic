@@ -68,6 +68,7 @@ function generateDemoResult(data: DiagnosisData): DiagnosisResult {
         why: 'P0300-range codes typically indicate ignition issues, and spark plugs are the most common cause.',
         parts: '$20-$100',
         labor: '$100-$300',
+        models_agree: true,
       },
       {
         rank: 2,
@@ -76,6 +77,7 @@ function generateDemoResult(data: DiagnosisData): DiagnosisResult {
         why: 'Bad coil packs produce similar misfire patterns.',
         parts: '$150-$400',
         labor: '$100-$200',
+        models_agree: false,
       },
       {
         rank: 3,
@@ -84,6 +86,7 @@ function generateDemoResult(data: DiagnosisData): DiagnosisResult {
         why: 'Dirty injectors can cause lean conditions and misfires.',
         parts: '$50-$300',
         labor: '$150-$400',
+        models_agree: false,
       },
     ];
     urgency = 'medium';
@@ -98,6 +101,7 @@ function generateDemoResult(data: DiagnosisData): DiagnosisResult {
         why: 'O2 sensor codes (P02xx) are among the most common emission codes.',
         parts: '$50-$200',
         labor: '$150-$300',
+        models_agree: true,
       },
       {
         rank: 2,
@@ -106,6 +110,7 @@ function generateDemoResult(data: DiagnosisData): DiagnosisResult {
         why: 'Clogged converters trigger emissions codes.',
         parts: '$400-$1200',
         labor: '$200-$600',
+        models_agree: false,
       },
     ];
     urgency = 'medium';
@@ -121,6 +126,7 @@ function generateDemoResult(data: DiagnosisData): DiagnosisResult {
           why: 'Belts wear over time and create squealing or grinding sounds.',
           parts: '$30-$80',
           labor: '$100-$250',
+          models_agree: true,
         },
       ];
       urgency = 'low';
@@ -135,6 +141,7 @@ function generateDemoResult(data: DiagnosisData): DiagnosisResult {
           why: 'Most overheating issues start with coolant loss.',
           parts: '$20-$100',
           labor: 'Varies',
+          models_agree: true,
         },
         {
           rank: 2,
@@ -143,6 +150,7 @@ function generateDemoResult(data: DiagnosisData): DiagnosisResult {
           why: 'Stuck thermostats prevent coolant circulation.',
           parts: '$100-$300',
           labor: '$150-$400',
+          models_agree: false,
         },
       ];
       urgency = 'high';
@@ -161,6 +169,7 @@ function generateDemoResult(data: DiagnosisData): DiagnosisResult {
           why: 'Your symptoms suggest multiple possibilities.',
           parts: 'TBD',
           labor: '$50-$150 diagnostic',
+          models_agree: true,
         },
       ];
       urgency = 'medium';
@@ -177,6 +186,7 @@ function generateDemoResult(data: DiagnosisData): DiagnosisResult {
         why: 'A comprehensive scan will reveal any hidden issues.',
         parts: 'N/A',
         labor: '$50-$150',
+        models_agree: true,
       },
     ];
     urgency = 'low';
@@ -186,22 +196,31 @@ function generateDemoResult(data: DiagnosisData): DiagnosisResult {
   return {
     urgency,
     urgencyLabel,
+    safeTodriveLabel: urgency === 'high' ? 'NO' : urgency === 'medium' ? 'CAUTION' : 'YES',
     summary,
     causes,
+    mediaFindings: [],
+    evidenceMap: [],
+    codesAnalyzed: codes.dtcs.concat(codes.pending),
     nextSteps: [
       'Review the most likely causes above',
       'If you are comfortable, try the cheapest fix first',
       'Get a quote from a local shop for professional repair',
       'Consider if the cost justifies keeping this vehicle',
     ],
+    discriminativeTest: null,
     shopScript: `I have a ${vehicle.year} ${vehicle.make} ${vehicle.model} with ${codes.dtcs.length > 0 ? `fault codes: ${codes.dtcs.join(', ')}` : 'check engine light on'}. Can you run a scan and diagnose? I have been experiencing ${symptoms.issues.join(', ') || 'issues'}.`,
     costEstimate: {
       diy: '$100-$500',
       shop: '$300-$1500',
       worstCase: '$800-$3000',
     },
+    doNotAuthorize: false,
+    doNotAuthorizeReason: '',
     doNotDrive,
+    fiveI: null,
     zip: vehicle.zip,
+    modelsUsed: ['demo'],
   };
 }
 

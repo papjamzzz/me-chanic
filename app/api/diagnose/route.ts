@@ -1,76 +1,66 @@
-import { DiagnosisData, DiagnosisResult } from '@/lib/types';
+import {
+  DiagnosisData,
+  DiagnosisResult,
+  ModelOutput,
+  ReportCause,
+  MediaFinding,
+} from '@/lib/types';
+import { buildRuleContext } from '@/lib/ruleEngine';
+import { runFiveI } from '@/lib/fiveI';
 
 // ── Shared prompts ──────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a senior automotive diagnostic technician with 30+ years of hands-on experience diagnosing everything from basic Fords to European imports.
+const REASONING_SYSTEM_PROMPT = `You are a vehicle diagnostic reasoning engine. Analyze the case and return ONLY valid JSON matching the exact structure specified. Be precise about evidence — only cite evidence that is actually present in the case data.
 
-Your job is to give real people real answers — plain language, no BS, no unnecessary jargon. Your audience is an everyday car owner who is NOT a mechanic and doesn't want to get ripped off at the shop.
-
-RULES:
-1. Plain English only — explain things like you're talking to a friend
-2. Rank causes by likelihood, highest first
-3. Always suggest the CHEAPEST diagnostic step first
-4. Give realistic cost estimates for the ZIP code provided
-5. Write the "shop script" like a real conversation, not a legal document
-6. Flag any safety-critical issues clearly
-7. Return ONLY valid JSON — no markdown fences, no commentary
-
-Return JSON matching this exact structure:
+Return ONLY this JSON structure, no markdown fences or commentary:
 {
-  "urgency": "low|medium|high",
-  "urgencyLabel": "string (e.g. '✅ NOT URGENT' or '⚠️ MONITOR CLOSELY' or '🚨 DO NOT DRIVE')",
-  "summary": "2-3 sentence plain English summary of what's probably going on",
-  "causes": [
+  "hypotheses": [
     {
-      "rank": 1,
-      "name": "Name of the problem",
-      "confidence": 82,
-      "why": "Plain English reason this fits the symptoms",
-      "parts": "$X–$Y",
-      "labor": "$X–$Y"
+      "name": "hypothesis name",
+      "support_score": 0.75,
+      "system": "misfire",
+      "evidence_used": ["rough idle", "P0300 code"],
+      "against": ["no codes present"]
     }
   ],
-  "nextSteps": [
-    "Step 1 (cheapest/easiest first)...",
-    "Step 2..."
-  ],
-  "shopScript": "Exact words the customer can say at the shop",
-  "costEstimate": {
-    "diy": "$X–$Y",
-    "shop": "$X–$Y",
-    "worstCase": "$X–$Y (explain what worst case is)"
-  },
-  "doNotDrive": ["Only include if genuinely unsafe — specific condition"],
-  "zip": "the zip code provided"
-}`;
+  "risk_assessment": "safe|caution|do_not_drive",
+  "action_recommendation": "specific action to test this hypothesis",
+  "reasoning_trace": "brief explanation of reasoning"
+}
 
-function buildUserPrompt(data: DiagnosisData): string {
-  return `Diagnose this vehicle:
+system values: misfire, cooling, belt_tensioner, fuel_system, electrical, exhaust_emissions, drivetrain, braking_steering, no_start, general`;
 
-VEHICLE: ${data.vehicle.year} ${data.vehicle.make} ${data.vehicle.model}
-Engine: ${data.vehicle.engine || 'Not specified'}
-Mileage: ${data.vehicle.miles || 'Not specified'}
-ZIP: ${data.vehicle.zip || 'Not specified'}
+function buildDiagnosticPrompt(data: DiagnosisData): string {
+  return `Diagnose this vehicle case. Return structured JSON with hypotheses, evidence analysis, and recommended tests.
 
-WARNING LIGHTS: ${data.codes.cel === 'on' ? 'CHECK ENGINE LIGHT ON' : data.codes.cel === 'other' ? 'Other warning light(s) on' : 'No warning lights'}
+VEHICLE: ${data.vehicle.year} ${data.vehicle.make} ${data.vehicle.model} (${data.vehicle.engine || 'engine unknown'}, ${data.vehicle.miles || 'mileage unknown'})
+ZIP: ${data.vehicle.zip || 'unknown'}
 
-CONFIRMED FAULT CODES: ${data.codes.dtcs.length > 0 ? data.codes.dtcs.join(', ') : 'None'}
-PENDING CODES: ${data.codes.pending.length > 0 ? data.codes.pending.join(', ') : 'None'}
-FREEZE FRAME: ${data.codes.freezeFrame || 'Not provided'}
+CODES:
+- Active DTCs: ${data.codes.dtcs.length > 0 ? data.codes.dtcs.join(', ') : 'None'}
+- Pending: ${data.codes.pending.length > 0 ? data.codes.pending.join(', ') : 'None'}
+- CEL: ${data.codes.cel}
+- Freeze Frame: ${data.codes.freezeFrame || 'Not provided'}
 
-SYMPTOMS REPORTED: ${data.symptoms.issues.length > 0 ? data.symptoms.issues.join(', ') : 'None selected'}
-When it happens: ${data.symptoms.when || 'Not specified'}
-Changes with RPM: ${data.symptoms.rpmChange || 'Not specified'}
-Braking/turning: ${data.symptoms.brakeSteer || 'Not specified'}
-Recent work done: ${data.symptoms.recentWork || 'Not specified'}
-Customer notes: ${data.symptoms.notes || 'None'}
+SYMPTOMS:
+- Issues: ${data.symptoms.issues.length > 0 ? data.symptoms.issues.join(', ') : 'None reported'}
+- When: ${data.symptoms.when || 'Not specified'}
+- RPM changes: ${data.symptoms.rpmChange || 'Not specified'}
+- Braking/steering: ${data.symptoms.brakeSteer || 'Not specified'}
+- Recent work: ${data.symptoms.recentWork || 'None'}
+- Notes: ${data.symptoms.notes || 'None'}
 
-Give me the diagnosis JSON.`;
+Generate 2-4 ranked hypotheses with:
+1. name: specific diagnosis
+2. support_score: 0-1 confidence
+3. system: affected vehicle system
+4. evidence_used: specific evidence supporting this (from the case data only)
+5. against: evidence contradicting this`;
 }
 
 // ── AI Provider Layer ───────────────────────────────────────────────────────
 
-async function callClaude(userPrompt: string): Promise<string> {
+async function callClaude(prompt: string): Promise<ModelOutput> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -81,16 +71,25 @@ async function callClaude(userPrompt: string): Promise<string> {
     body: JSON.stringify({
       model: 'claude-sonnet-4-5',
       max_tokens: 2048,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt }],
+      system: REASONING_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: prompt }],
     }),
   });
   if (!res.ok) throw new Error(`Claude error: ${res.status}`);
   const j = await res.json();
-  return j.content?.[0]?.text ?? '';
+  const text = j.content?.[0]?.text ?? '{}';
+  const parsed = JSON.parse(text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+  return {
+    model: 'claude',
+    hypotheses: parsed.hypotheses || [],
+    risk_assessment: parsed.risk_assessment || 'safe',
+    action_recommendation: parsed.action_recommendation || '',
+    reasoning_trace: parsed.reasoning_trace || '',
+    raw_text: text,
+  };
 }
 
-async function callOpenAI(userPrompt: string): Promise<string> {
+async function callOpenAI(prompt: string): Promise<ModelOutput> {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -100,8 +99,8 @@ async function callOpenAI(userPrompt: string): Promise<string> {
     body: JSON.stringify({
       model: 'gpt-4o',
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
+        { role: 'system', content: REASONING_SYSTEM_PROMPT },
+        { role: 'user', content: prompt },
       ],
       temperature: 0.5,
       max_tokens: 2048,
@@ -109,74 +108,187 @@ async function callOpenAI(userPrompt: string): Promise<string> {
   });
   if (!res.ok) throw new Error(`OpenAI error: ${res.status}`);
   const j = await res.json();
-  return j.choices?.[0]?.message?.content ?? '';
+  const text = j.choices?.[0]?.message?.content ?? '{}';
+  const parsed = JSON.parse(text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+  return {
+    model: 'gpt',
+    hypotheses: parsed.hypotheses || [],
+    risk_assessment: parsed.risk_assessment || 'safe',
+    action_recommendation: parsed.action_recommendation || '',
+    reasoning_trace: parsed.reasoning_trace || '',
+    raw_text: text,
+  };
 }
 
-async function callGrok(userPrompt: string): Promise<string> {
-  // Grok uses OpenAI-compatible API
-  const res = await fetch('https://api.x.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.GROK_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'grok-3',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.5,
-      max_tokens: 2048,
-    }),
-  });
-  if (!res.ok) throw new Error(`Grok error: ${res.status}`);
-  const j = await res.json();
-  return j.choices?.[0]?.message?.content ?? '';
-}
-
-async function callGemini(userPrompt: string): Promise<string> {
+async function callGemini(prompt: string): Promise<ModelOutput> {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: SYSTEM_PROMPT + '\n\n' + userPrompt }] }],
+        contents: [{ parts: [{ text: REASONING_SYSTEM_PROMPT + '\n\n' + prompt }] }],
         generationConfig: { temperature: 0.5, maxOutputTokens: 2048 },
       }),
     }
   );
   if (!res.ok) throw new Error(`Gemini error: ${res.status}`);
   const j = await res.json();
-  return j.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  const text = j.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+  const parsed = JSON.parse(text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+  return {
+    model: 'gemini',
+    hypotheses: parsed.hypotheses || [],
+    risk_assessment: parsed.risk_assessment || 'safe',
+    action_recommendation: parsed.action_recommendation || '',
+    reasoning_trace: parsed.reasoning_trace || '',
+    raw_text: text,
+  };
 }
 
-// Try providers in priority order
-async function runDiagnosis(userPrompt: string): Promise<string> {
-  const provider = process.env.AI_PROVIDER ?? 'claude';
+// Run 3 models in parallel (Claude + GPT + Gemini)
+async function runParallelDiagnosis(prompt: string): Promise<ModelOutput[]> {
+  const calls: Promise<ModelOutput | null>[] = [];
+  const results: ModelOutput[] = [];
 
-  // Try preferred provider first, then fall through
-  const providers: Array<() => Promise<string>> = [];
-
-  if (provider === 'claude' && process.env.ANTHROPIC_API_KEY) providers.push(() => callClaude(userPrompt));
-  if (process.env.OPENAI_API_KEY) providers.push(() => callOpenAI(userPrompt));
-  if (process.env.GROK_API_KEY) providers.push(() => callGrok(userPrompt));
-  if (process.env.GEMINI_API_KEY) providers.push(() => callGemini(userPrompt));
-  // If claude wasn't first priority, add it as fallback
-  if (provider !== 'claude' && process.env.ANTHROPIC_API_KEY) providers.push(() => callClaude(userPrompt));
-
-  if (providers.length === 0) throw new Error('no_api_key');
-
-  for (const call of providers) {
-    try {
-      const text = await call();
-      if (text) return text;
-    } catch (e) {
-      console.warn('Provider failed, trying next:', e);
-    }
+  if (process.env.ANTHROPIC_API_KEY) {
+    calls.push(callClaude(prompt).catch(e => {
+      console.warn('Claude failed:', e);
+      return null;
+    }));
   }
-  throw new Error('all_providers_failed');
+  if (process.env.OPENAI_API_KEY) {
+    calls.push(callOpenAI(prompt).catch(e => {
+      console.warn('OpenAI failed:', e);
+      return null;
+    }));
+  }
+  if (process.env.GEMINI_API_KEY) {
+    calls.push(callGemini(prompt).catch(e => {
+      console.warn('Gemini failed:', e);
+      return null;
+    }));
+  }
+
+  const settled = await Promise.all(calls);
+  settled.forEach(output => {
+    if (output) results.push(output);
+  });
+
+  return results;
+}
+
+// ── Demo Mode: Generate mock outputs ────────────────────────────────────────
+
+function generateDemoOutput(data: DiagnosisData): ModelOutput {
+  const codes = data.codes.dtcs.concat(data.codes.pending);
+  const symptoms = data.symptoms.issues;
+
+  let system: any = 'general';
+  let cause = 'Diagnostic pending';
+
+  // Simple heuristic based on codes/symptoms
+  if (codes.some(c => /P03\d\d/.test(c)) || symptoms.includes('Rough idle / shaking')) {
+    system = 'misfire';
+    cause = 'Likely ignition or fuel system issue';
+  } else if (codes.some(c => /P01[12]\d/.test(c)) || symptoms.includes('Overheating')) {
+    system = 'cooling';
+    cause = 'Possible thermostat or coolant issue';
+  } else if (symptoms.includes('Strange noise')) {
+    system = 'belt_tensioner';
+    cause = 'Possible belt or pulley wear';
+  }
+
+  return {
+    model: 'demo',
+    hypotheses: [
+      {
+        name: cause,
+        support_score: 0.7 + Math.random() * 0.2,
+        system,
+        evidence_used: codes.slice(0, 2),
+        against: symptoms.length > 2 ? [symptoms[2]] : [],
+      },
+      {
+        name: 'Secondary hypothesis',
+        support_score: 0.5 + Math.random() * 0.2,
+        system: 'general',
+        evidence_used: symptoms.slice(0, 1),
+        against: [],
+      },
+    ],
+    risk_assessment: 'safe',
+    action_recommendation: 'Get an OBD scan from a local auto parts store',
+    reasoning_trace: 'Demo mode analysis',
+    raw_text: 'demo',
+  };
+}
+
+// ── Result Building ─────────────────────────────────────────────────────────
+
+function buildDiagnosisResult(
+  data: DiagnosisData,
+  fiveIResult: any,
+  modelsUsed: string[]
+): DiagnosisResult {
+  const { guardrails, top_hypotheses, recommended_next_test, evidence_map } = fiveIResult;
+
+  // Convert top hypotheses to report causes
+  const causes: ReportCause[] = top_hypotheses.slice(0, 3).map((hyp: any, idx: number) => {
+    // Count model agreement
+    const modelCount = (modelsUsed || []).length;
+    const modelsAgree = idx === 0 || (modelCount >= 2);
+
+    return {
+      rank: idx + 1,
+      name: hyp.name,
+      confidence: Math.round(hyp.support_score * 100),
+      why: `Based on ${hyp.evidence_used.join(', ') || 'the symptoms reported'}.`,
+      parts: `$50–$300`,
+      labor: `$150–$500`,
+      models_agree: modelsAgree,
+    };
+  });
+
+  // Safe to drive label
+  const safeTodriveLabel =
+    guardrails.safe_to_drive === 'yes' ? 'YES' :
+    guardrails.safe_to_drive === 'caution' ? 'CAUTION' : 'NO';
+
+  // Next steps from discriminative test
+  const nextSteps: string[] = [];
+  if (recommended_next_test) {
+    nextSteps.push(recommended_next_test.action);
+  }
+  nextSteps.push('If the above test is inconclusive, get a full OBD scan with live data');
+  nextSteps.push('Share the diagnostic results with a trusted mechanic before authorizing repairs');
+
+  return {
+    urgency: guardrails.urgency,
+    urgencyLabel:
+      guardrails.urgency === 'high' ? '🚨 DO NOT DRIVE' :
+      guardrails.urgency === 'medium' ? '⚠️ MONITOR CLOSELY' : '✅ NOT URGENT',
+    safeTodriveLabel,
+    summary: fiveIResult.model_agreement_summary || 'Analysis complete.',
+    causes,
+    mediaFindings: [],
+    evidenceMap: evidence_map || [],
+    codesAnalyzed: data.codes.dtcs.concat(data.codes.pending),
+    nextSteps,
+    discriminativeTest: recommended_next_test,
+    costEstimate: {
+      diy: '$50–$300',
+      shop: '$300–$1,200',
+      worstCase: '$1,500–$3,000+ (major component failure)',
+    },
+    shopScript: 'I\'ve had an AI diagnostic review my symptoms and codes. It suggests checking [component]. Can you confirm with your scanner before we proceed with repairs?',
+    doNotAuthorize: guardrails.do_not_authorize_major_repair,
+    doNotAuthorizeReason: guardrails.reason,
+    doNotDrive: guardrails.safe_to_drive === 'no' ? ['Overheating, brake failure, or electrical hazard detected'] : [],
+    fiveI: fiveIResult,
+    zip: data.vehicle.zip,
+    modelsUsed,
+  };
 }
 
 // ── Route Handler ───────────────────────────────────────────────────────────
@@ -185,26 +297,37 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const data: DiagnosisData = await req.json();
 
-    // No keys at all? Return 503 so frontend uses demo mode
+    // Check for API keys
     const hasAnyKey =
       process.env.ANTHROPIC_API_KEY ||
       process.env.OPENAI_API_KEY ||
-      process.env.GROK_API_KEY ||
       process.env.GEMINI_API_KEY;
 
-    if (!hasAnyKey) {
-      return new Response(JSON.stringify({ error: 'no_api_key' }), {
-        status: 503,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    // Build rule context
+    const ruleContext = buildRuleContext(data, []);
+
+    let modelOutputs: ModelOutput[] = [];
+    let modelsUsed: string[] = [];
+
+    // Run models if we have keys
+    if (hasAnyKey) {
+      const prompt = buildDiagnosticPrompt(data);
+      modelOutputs = await runParallelDiagnosis(prompt);
+      modelsUsed = modelOutputs.map(o => o.model);
     }
 
-    const userPrompt = buildUserPrompt(data);
-    const rawText = await runDiagnosis(userPrompt);
+    // If no models succeeded, use demo mode
+    if (modelOutputs.length === 0) {
+      const demoOutput = generateDemoOutput(data);
+      modelOutputs = [demoOutput, generateDemoOutput(data)];
+      modelsUsed = ['demo-1', 'demo-2'];
+    }
 
-    // Strip any accidental markdown fences
-    const clean = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const result: DiagnosisResult = JSON.parse(clean);
+    // Run 5i arbitration
+    const fiveIResult = runFiveI({ modelOutputs, ruleContext });
+
+    // Build final diagnosis result
+    const result = buildDiagnosisResult(data, fiveIResult, modelsUsed);
 
     return new Response(JSON.stringify(result), {
       status: 200,
@@ -212,7 +335,7 @@ export async function POST(req: Request): Promise<Response> {
     });
   } catch (error) {
     console.error('Diagnose error:', error);
-    return new Response(JSON.stringify({ error: 'server_error' }), {
+    return new Response(JSON.stringify({ error: 'server_error', details: String(error) }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
