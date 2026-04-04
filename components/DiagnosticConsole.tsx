@@ -138,20 +138,20 @@ export default function DiagnosticConsole({
 
   // ── Styles ───────────────────────────────────────────────────────────────────
   const S = {
-    bg:      '#0a0a0a',
-    surface: '#141414',
-    panel:   '#1a1a1a',
-    border:  '#2a2a2a',
+    bg:      '#0d0d0d',
+    surface: '#1a1a1a',
+    panel:   '#1f1f1f',
+    border:  '#333333',
     orange:  '#f97316',
-    dim:     '#888',
-    text:    '#f0f0f0',
+    dim:     '#b0b0b0',
+    text:    '#ffffff',
     input: {
-      background: '#0a0a0a',
-      border: '1px solid #2a2a2a',
-      color: '#f0f0f0',
+      background: '#111111',
+      border: '1px solid #333333',
+      color: '#ffffff',
       borderRadius: 6,
       padding: '10px 14px',
-      fontSize: 14,
+      fontSize: 17,
       width: '100%',
       outline: 'none',
     } as React.CSSProperties,
@@ -180,7 +180,7 @@ export default function DiagnosticConsole({
         {/* VIN */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: '1 1 260px', minWidth: 220 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: S.dim, letterSpacing: 1, marginBottom: 5 }}>VIN</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: S.dim, letterSpacing: 1, marginBottom: 5 }}>VIN</div>
             <div style={{ display: 'flex', gap: 6 }}>
               <input
                 style={{ ...S.input, fontFamily: 'monospace', flex: 1 }}
@@ -195,7 +195,7 @@ export default function DiagnosticConsole({
                 style={{
                   background: vinLoading ? '#333' : S.orange,
                   color: '#000', border: 'none', borderRadius: 6,
-                  padding: '0 14px', fontWeight: 700, fontSize: 12,
+                  padding: '0 14px', fontWeight: 700, fontSize: 17,
                   cursor: 'pointer', whiteSpace: 'nowrap', opacity: vehicle.vin.length < 10 ? 0.4 : 1,
                 }}
               >
@@ -214,7 +214,7 @@ export default function DiagnosticConsole({
           { key: 'zip',   label: 'ZIP',    placeholder: '90210', width: 80 },
         ].map(({ key, label, placeholder, width }) => (
           <div key={key} style={{ minWidth: width }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: S.dim, letterSpacing: 1, marginBottom: 5 }}>{label}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: S.dim, letterSpacing: 1, marginBottom: 5 }}>{label}</div>
             <input
               style={{ ...S.input, width }}
               value={vehicle[key as keyof VehicleData]}
@@ -227,14 +227,14 @@ export default function DiagnosticConsole({
 
         {/* CEL toggle */}
         <div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: S.dim, letterSpacing: 1, marginBottom: 5 }}>CHECK ENGINE</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: S.dim, letterSpacing: 1, marginBottom: 5 }}>CHECK ENGINE</div>
           <div style={{ display: 'flex', gap: 4 }}>
             {(['on', 'off', 'other'] as const).map(v => (
               <button key={v} onClick={() => updateCodes({ cel: v })} style={{
                 padding: '8px 12px', borderRadius: 6, border: `1px solid ${codes.cel === v ? S.orange : S.border}`,
                 background: codes.cel === v ? `rgba(249,115,22,0.15)` : 'transparent',
                 color: codes.cel === v ? S.orange : S.dim,
-                fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase',
+                fontSize: 17, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase',
               }}>{v}</button>
             ))}
           </div>
@@ -250,7 +250,7 @@ export default function DiagnosticConsole({
             color: hasEnough ? '#000' : S.dim,
             border: 'none', borderRadius: 8,
             padding: '12px 28px', fontWeight: 800,
-            fontSize: 15, cursor: hasEnough ? 'pointer' : 'not-allowed',
+            fontSize: 18, cursor: hasEnough ? 'pointer' : 'not-allowed',
             letterSpacing: 0.5, whiteSpace: 'nowrap',
             transition: 'all 0.15s',
           }}
@@ -271,12 +271,12 @@ export default function DiagnosticConsole({
         {/* ── LEFT: OBD DATA ── */}
         <div style={{ background: S.bg, padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: S.dim, letterSpacing: 1.5, marginBottom: 14, textTransform: 'uppercase' }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: S.text, letterSpacing: 1.5, marginBottom: 14, textTransform: 'uppercase' }}>
               OBD / Scanner Data
             </div>
 
             {/* Fault codes */}
-            <label style={{ fontSize: 12, fontWeight: 600, color: S.dim, display: 'block', marginBottom: 6 }}>
+            <label style={{ fontSize: 17, fontWeight: 700, color: S.text, display: 'block', marginBottom: 6 }}>
               Fault Codes
             </label>
             <textarea
@@ -287,7 +287,7 @@ export default function DiagnosticConsole({
               style={{
                 ...S.input,
                 minHeight: 90, resize: 'vertical', fontFamily: 'monospace',
-                fontSize: 13, lineHeight: 1.6,
+                fontSize: 16, lineHeight: 1.6,
               } as React.CSSProperties}
             />
             {codes.dtcs.length > 0 && (
@@ -296,7 +296,7 @@ export default function DiagnosticConsole({
                   <span key={c} style={{
                     background: 'rgba(249,115,22,0.15)', color: S.orange,
                     border: `1px solid rgba(249,115,22,0.3)`,
-                    borderRadius: 4, padding: '2px 8px', fontSize: 12, fontFamily: 'monospace', fontWeight: 700,
+                    borderRadius: 4, padding: '2px 8px', fontSize: 17, fontFamily: 'monospace', fontWeight: 700,
                   }}>{c}</span>
                 ))}
               </div>
@@ -305,7 +305,7 @@ export default function DiagnosticConsole({
 
           {/* Freeze frame */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: S.dim, display: 'block', marginBottom: 6 }}>
+            <label style={{ fontSize: 17, fontWeight: 700, color: S.text, display: 'block', marginBottom: 6 }}>
               Freeze Frame / Live Data
             </label>
             <textarea
@@ -315,14 +315,14 @@ export default function DiagnosticConsole({
               placeholder={'RPM: 850\nCoolant: 195°F\nMAF: 3.2 g/s\n...paste anything'}
               style={{
                 ...S.input,
-                minHeight: 110, resize: 'vertical', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.7,
+                minHeight: 110, resize: 'vertical', fontFamily: 'monospace', fontSize: 17, lineHeight: 1.7,
               } as React.CSSProperties}
             />
           </div>
 
           {/* Notes */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: S.dim, display: 'block', marginBottom: 6 }}>
+            <label style={{ fontSize: 17, fontWeight: 700, color: S.text, display: 'block', marginBottom: 6 }}>
               Notes / Recent Work
             </label>
             <textarea
@@ -332,7 +332,7 @@ export default function DiagnosticConsole({
               placeholder={'Just replaced brake pads.\nHappens when cold.\nGot worse after rain...'}
               style={{
                 ...S.input,
-                minHeight: 90, resize: 'vertical', fontSize: 13, lineHeight: 1.6,
+                minHeight: 90, resize: 'vertical', fontSize: 16, lineHeight: 1.6,
               } as React.CSSProperties}
             />
           </div>
@@ -340,7 +340,7 @@ export default function DiagnosticConsole({
 
         {/* ── CENTER: DROP ZONE ── */}
         <div style={{ background: S.bg, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: S.dim, letterSpacing: 1.5, marginBottom: 0, textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: S.text, letterSpacing: 1.5, marginBottom: 0, textTransform: 'uppercase' }}>
             Upload Everything
           </div>
 
@@ -362,11 +362,11 @@ export default function DiagnosticConsole({
               flex: uploads.length === 0 ? 1 : 'none',
             }}
           >
-            <div style={{ fontSize: 36, marginBottom: 12 }}>📂</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: S.text, marginBottom: 6 }}>
+            <div style={{ fontSize: 44, marginBottom: 12 }}>📂</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: S.text, marginBottom: 6 }}>
               Drop anything here
             </div>
-            <div style={{ fontSize: 13, color: S.dim, lineHeight: 1.7 }}>
+            <div style={{ fontSize: 16, color: S.dim, lineHeight: 1.7 }}>
               OBD screenshots · engine audio · dashboard photos<br />
               under-hood video · scan tool exports
             </div>
@@ -377,7 +377,7 @@ export default function DiagnosticConsole({
               color: S.orange,
               border: `1px solid rgba(249,115,22,0.3)`,
               borderRadius: 6, padding: '7px 20px',
-              fontSize: 13, fontWeight: 700,
+              fontSize: 16, fontWeight: 700,
             }}>
               + Choose Files
             </div>
@@ -402,10 +402,10 @@ export default function DiagnosticConsole({
                 }}>
                   <span style={{ fontSize: 18 }}>{getFileIcon(f)}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: S.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: S.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {f.name}
                     </div>
-                    <div style={{ fontSize: 11, color: S.dim }}>{formatSize(f.size)}</div>
+                    <div style={{ fontSize: 16, color: S.dim }}>{formatSize(f.size)}</div>
                   </div>
                   <button onClick={() => removeFile(i)} style={{
                     background: 'none', border: 'none', color: S.dim,
@@ -423,10 +423,10 @@ export default function DiagnosticConsole({
             borderRadius: 8, padding: '14px 16px',
             marginTop: 'auto',
           }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: S.orange, marginBottom: 8, letterSpacing: 0.5 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: S.orange, marginBottom: 8, letterSpacing: 0.5 }}>
               📱 Using your phone?
             </div>
-            <div style={{ fontSize: 12, color: S.dim, lineHeight: 1.75 }}>
+            <div style={{ fontSize: 17, color: S.dim, lineHeight: 1.75 }}>
               <span style={{ color: S.text, fontWeight: 600 }}>1.</span> Open your OBD app → screenshot the codes<br />
               <span style={{ color: S.text, fontWeight: 600 }}>2.</span> Record engine sounds with your voice memo app<br />
               <span style={{ color: S.text, fontWeight: 600 }}>3.</span> Photo your dashboard warning lights<br />
@@ -438,7 +438,7 @@ export default function DiagnosticConsole({
         {/* ── RIGHT: SYMPTOMS ── */}
         <div style={{ background: S.bg, padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: S.dim, letterSpacing: 1.5, marginBottom: 14, textTransform: 'uppercase' }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: S.text, letterSpacing: 1.5, marginBottom: 14, textTransform: 'uppercase' }}>
               What's Wrong?
             </div>
 
@@ -452,7 +452,7 @@ export default function DiagnosticConsole({
                     border: `1px solid ${active ? S.orange : S.border}`,
                     background: active ? 'rgba(249,115,22,0.15)' : 'transparent',
                     color: active ? S.orange : S.dim,
-                    fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    fontSize: 17, fontWeight: 600, cursor: 'pointer',
                     transition: 'all 0.12s',
                   }}>{label}</button>
                 );
@@ -462,7 +462,7 @@ export default function DiagnosticConsole({
 
           {/* When */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: S.dim, display: 'block', marginBottom: 8 }}>
+            <label style={{ fontSize: 17, fontWeight: 700, color: S.text, display: 'block', marginBottom: 8 }}>
               When does it happen?
             </label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -474,7 +474,7 @@ export default function DiagnosticConsole({
                     border: `1px solid ${active ? S.orange : S.border}`,
                     background: active ? 'rgba(249,115,22,0.12)' : 'transparent',
                     color: active ? S.orange : S.dim,
-                    fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                    fontSize: 16, fontWeight: 600, cursor: 'pointer',
                   }}>{w}</button>
                 );
               })}
@@ -483,7 +483,7 @@ export default function DiagnosticConsole({
 
           {/* Describe */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: S.dim, display: 'block', marginBottom: 6 }}>
+            <label style={{ fontSize: 17, fontWeight: 700, color: S.text, display: 'block', marginBottom: 6 }}>
               Describe in your own words
             </label>
             <textarea
@@ -493,7 +493,7 @@ export default function DiagnosticConsole({
               placeholder={'My car makes a rattling sound when I accelerate above 40mph. It started last week after I filled up with gas...'}
               style={{
                 ...S.input,
-                flex: 1, minHeight: 140, resize: 'none', fontSize: 13, lineHeight: 1.7,
+                flex: 1, minHeight: 140, resize: 'none', fontSize: 16, lineHeight: 1.7,
               } as React.CSSProperties}
             />
           </div>
@@ -503,7 +503,7 @@ export default function DiagnosticConsole({
             background: S.surface, border: `1px solid ${S.border}`,
             borderRadius: 8, padding: '12px 16px',
           }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: S.dim, marginBottom: 10, letterSpacing: 0.5 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: S.dim, marginBottom: 10, letterSpacing: 0.5 }}>
               CONSOLE STATUS
             </div>
             {[
@@ -519,10 +519,10 @@ export default function DiagnosticConsole({
                   boxShadow: done ? '0 0 6px rgba(34,197,94,0.5)' : 'none',
                   flexShrink: 0,
                 }} />
-                <span style={{ fontSize: 12, color: done ? S.text : S.dim, fontWeight: done ? 600 : 400 }}>
+                <span style={{ fontSize: 17, color: done ? S.text : S.dim, fontWeight: done ? 600 : 400 }}>
                   {label}
                 </span>
-                <span style={{ fontSize: 11, color: done ? '#22c55e' : S.dim, marginLeft: 'auto' }}>
+                <span style={{ fontSize: 16, color: done ? '#22c55e' : S.dim, marginLeft: 'auto' }}>
                   {done ? 'ready' : 'optional'}
                 </span>
               </div>
@@ -537,7 +537,7 @@ export default function DiagnosticConsole({
                 color: hasEnough ? '#000' : S.dim,
                 border: 'none', borderRadius: 6,
                 padding: '12px', fontWeight: 800,
-                fontSize: 14, cursor: hasEnough ? 'pointer' : 'not-allowed',
+                fontSize: 17, cursor: hasEnough ? 'pointer' : 'not-allowed',
                 letterSpacing: 0.5, transition: 'all 0.15s',
               }}
             >
