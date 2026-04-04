@@ -251,14 +251,32 @@ export default function Home() {
     setIsLoading(true);
     setStep(5 as 5);
 
-    // Simulate processing time
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-
     try {
+      // Build FormData so files actually reach the server
+      const form = new FormData();
+      form.append('meta', JSON.stringify({
+        vehicle: data.vehicle,
+        codes: data.codes,
+        symptoms: data.symptoms,
+      }));
+
+      // Collect all unique image files
+      const seen = new Set<File>();
+      let imgIdx = 0;
+      const addImage = (f: File | undefined) => {
+        if (f && !seen.has(f)) { seen.add(f); form.append(`image_${imgIdx++}`, f, f.name); }
+      };
+      (data.media.screenshots || []).forEach(addImage);
+      addImage(data.media.dash);
+      addImage(data.media.leak);
+
+      // Audio / video
+      if (data.media.audio) form.append('audio', data.media.audio, data.media.audio.name);
+      if (data.media.video) form.append('video', data.media.video, data.media.video.name);
+
       const res = await fetch('/api/diagnose', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: form,   // no Content-Type header — browser sets multipart boundary
       });
 
       const result = await res.json();
