@@ -2,11 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
-import ProgressBar from '@/components/ProgressBar';
-import StepVehicle from '@/components/StepVehicle';
-import StepCodes from '@/components/StepCodes';
-import StepSymptoms from '@/components/StepSymptoms';
-import StepMedia from '@/components/StepMedia';
+import DiagnosticConsole from '@/components/DiagnosticConsole';
 import StepProcessing from '@/components/StepProcessing';
 import StepReport from '@/components/StepReport';
 import {
@@ -225,7 +221,7 @@ function generateDemoResult(data: DiagnosisData): DiagnosisResult {
 }
 
 export default function Home() {
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+  const [step, setStep] = useState<1 | 5 | 6>(1);
   const [data, setData] = useState<DiagnosisData>({
     vehicle: initialVehicle,
     codes: initialCodes,
@@ -253,7 +249,7 @@ export default function Home() {
 
   const handleDiagnose = async () => {
     setIsLoading(true);
-    setStep(5);
+    setStep(5 as 5);
 
     // Simulate processing time
     await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -282,12 +278,12 @@ export default function Home() {
       setResult(generateDemoResult(data));
     } finally {
       setIsLoading(false);
-      setStep(6);
+      setStep(6 as 6);
     }
   };
 
   const handleReset = () => {
-    setStep(1);
+    setStep(1 as 1);
     setData({
       vehicle: initialVehicle,
       codes: initialCodes,
@@ -298,68 +294,30 @@ export default function Home() {
   };
 
   return (
-    <div
-      style={{
-        background: '#0a0a0a',
-        color: '#f0f0f0',
-        minHeight: '100vh',
-      }}
-    >
+    <div style={{ background: '#0a0a0a', color: '#f0f0f0', minHeight: '100vh' }}>
       <Header />
 
-      {/* Show progress bar except on processing/report steps */}
-      {step < 5 && <ProgressBar current={step} />}
-
-      {/* Step 1: Vehicle */}
+      {/* Console — always visible until processing */}
       {step === 1 && (
-        <StepVehicle
-          data={data.vehicle}
-          update={updateVehicle}
-          onNext={() => setStep(2)}
+        <DiagnosticConsole
+          vehicle={data.vehicle}
+          codes={data.codes}
+          symptoms={data.symptoms}
+          media={data.media}
+          updateVehicle={updateVehicle}
+          updateCodes={updateCodes}
+          updateSymptoms={updateSymptoms}
+          updateMedia={updateMedia}
+          onDiagnose={handleDiagnose}
         />
       )}
 
-      {/* Step 2: Codes */}
-      {step === 2 && (
-        <StepCodes
-          data={data.codes}
-          update={updateCodes}
-          onNext={() => setStep(3)}
-          onBack={() => setStep(1)}
-        />
-      )}
-
-      {/* Step 3: Symptoms */}
-      {step === 3 && (
-        <StepSymptoms
-          data={data.symptoms}
-          update={updateSymptoms}
-          onNext={() => setStep(4)}
-          onBack={() => setStep(2)}
-        />
-      )}
-
-      {/* Step 4: Media */}
-      {step === 4 && (
-        <StepMedia
-          data={data.media}
-          update={updateMedia}
-          onNext={handleDiagnose}
-          onBack={() => setStep(3)}
-          onSkip={handleDiagnose}
-        />
-      )}
-
-      {/* Step 5: Processing */}
+      {/* Processing */}
       {step === 5 && <StepProcessing />}
 
-      {/* Step 6: Report */}
+      {/* Report */}
       {step === 6 && result && (
-        <StepReport
-          result={result}
-          vehicle={data.vehicle}
-          onReset={handleReset}
-        />
+        <StepReport result={result} vehicle={data.vehicle} onReset={handleReset} />
       )}
     </div>
   );

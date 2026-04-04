@@ -31,6 +31,7 @@ export interface MediaData {
   video?: File;
   dash?: File;
   leak?: File;
+  screenshots?: File[];
 }
 
 export interface DiagnosisData {
