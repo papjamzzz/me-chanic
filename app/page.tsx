@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Header from '@/components/Header';
 import DiagnosticConsole from '@/components/DiagnosticConsole';
-import StepProcessing from '@/components/StepProcessing';
+import DiagnosisLive from '@/components/DiagnosisLive';
 import StepReport from '@/components/StepReport';
 import {
   DiagnosisData,
@@ -230,6 +230,19 @@ export default function Home() {
   });
   const [result, setResult] = useState<DiagnosisResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [liveEvents, setLiveEvents] = useState<Array<{id:number;type:any;model?:string;message:string;ts:number}>>([]);
+  const [spectrogramCanvas, setSpectrogramCanvas] = useState<HTMLCanvasElement | null>(null);
+  const eventIdRef = useRef(0);
+
+  const addEvent = (type: string, message: string, model?: string) => {
+    setLiveEvents(prev => [...prev, {
+      id: eventIdRef.current++,
+      type: type as any,
+      model,
+      message,
+      ts: Date.now(),
+    }]);
+  };
 
   const updateVehicle = (v: Partial<VehicleData>) => {
     setData((prev) => ({ ...prev, vehicle: { ...prev.vehicle, ...v } }));
@@ -249,7 +262,10 @@ export default function Home() {
 
   const handleDiagnose = async () => {
     setIsLoading(true);
+    setLiveEvents([]);
     setStep(5 as 5);
+
+    addEvent('start', 'Diagnostic engine starting…');
 
     try {
       // Build FormData so files actually reach the server
@@ -271,28 +287,39 @@ export default function Home() {
       addImage(data.media.leak);
 
       // Audio / video
-      if (data.media.audio) form.append('audio', data.media.audio, data.media.audio.name);
+      if (data.media.audio) {
+        form.append('audio', data.media.audio, data.media.audio.name);
+        addEvent('audio', `Sending audio for spectrogram analysis: ${data.media.audio.name}`);
+      }
       if (data.media.video) form.append('video', data.media.video, data.media.video.name);
+
+      if (imgIdx > 0) addEvent('vision', `Sending ${imgIdx} image${imgIdx > 1 ? 's' : ''} to GPT-4o Vision…`);
+      addEvent('model', 'Claude Sonnet — reasoning on case data…', 'claude');
+      addEvent('model', 'GPT-4o — cross-referencing codes and symptoms…', 'gpt');
+      addEvent('model', 'Gemini 1.5 — confirming findings…', 'gemini');
 
       const res = await fetch('/api/diagnose', {
         method: 'POST',
-        body: form,   // no Content-Type header — browser sets multipart boundary
+        body: form,
       });
 
       const result = await res.json();
 
       // Check for no_api_key error and fall back to demo
       if (result.error === 'no_api_key') {
-        console.log('No API key, using demo mode');
+        addEvent('error', 'No API key set — using demo mode');
         setResult(generateDemoResult(data));
       } else if (result.error) {
-        console.error('API error:', result.error);
+        addEvent('error', `API error: ${result.error}`);
         setResult(generateDemoResult(data));
       } else {
+        addEvent('arbitration', '5i consensus engine arbitrating across all models…');
+        addEvent('done', `Diagnosis complete — ${result.modelsUsed?.length || 0} models used, ${result.causes?.length || 0} causes ranked`);
         setResult(result);
       }
     } catch (err) {
       console.error('Error:', err);
+      addEvent('error', `Connection error: ${String(err)}`);
       setResult(generateDemoResult(data));
     } finally {
       setIsLoading(false);
@@ -315,7 +342,7 @@ export default function Home() {
     <div style={{ background: '#0a0a0a', color: '#f0f0f0', minHeight: '100vh' }}>
       <Header />
 
-      {/* Console — always visible until processing */}
+      {/* Console */}
       {step === 1 && (
         <DiagnosticConsole
           vehicle={data.vehicle}
@@ -327,11 +354,20 @@ export default function Home() {
           updateSymptoms={updateSymptoms}
           updateMedia={updateMedia}
           onDiagnose={handleDiagnose}
+          onSpectrogramReady={setSpectrogramCanvas}
         />
       )}
 
-      {/* Processing */}
-      {step === 5 && <StepProcessing />}
+      {/* Live mission control — shown during processing */}
+      {step === 5 && (
+        <DiagnosisLive
+          events={liveEvents}
+          spectrogramCanvas={spectrogramCanvas}
+          vehicle={data.vehicle}
+          fileCount={(data.media.screenshots?.length || 0) + (data.media.dash ? 1 : 0)}
+          hasAudio={!!data.media.audio}
+        />
+      )}
 
       {/* Report */}
       {step === 6 && result && (

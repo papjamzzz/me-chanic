@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { VehicleData, CodesData, SymptomsData, MediaData } from '@/lib/types';
+
+const SpectrogramView = dynamic(() => import('./SpectrogramView'), { ssr: false });
 
 interface NHTSAResponse {
   Results: Array<{ Variable: string; Value: string | null }>;
@@ -17,6 +20,7 @@ interface Props {
   updateSymptoms: (v: Partial<SymptomsData>) => void;
   updateMedia: (v: Partial<MediaData>) => void;
   onDiagnose: () => void;
+  onSpectrogramReady?: (canvas: HTMLCanvasElement) => void;
 }
 
 const SYMPTOM_CHIPS = [
@@ -57,7 +61,7 @@ function formatSize(bytes: number) {
 export default function DiagnosticConsole({
   vehicle, codes, symptoms, media,
   updateVehicle, updateCodes, updateSymptoms, updateMedia,
-  onDiagnose,
+  onDiagnose, onSpectrogramReady,
 }: Props) {
   const [vinLoading, setVinLoading] = useState(false);
   const [vinStatus, setVinStatus] = useState<'idle' | 'ok' | 'err'>('idle');
@@ -344,6 +348,14 @@ export default function DiagnosticConsole({
             Upload Everything
           </div>
 
+          {/* Spectrogram — shown when audio is uploaded */}
+          {media.audio && (
+            <SpectrogramView
+              file={media.audio}
+              onSpectrogramReady={onSpectrogramReady}
+            />
+          )}
+
           {/* Drop zone */}
           <div
             ref={dropRef}
@@ -355,29 +367,31 @@ export default function DiagnosticConsole({
               border: `2px dashed ${dragging ? S.orange : S.border}`,
               borderRadius: 10,
               background: dragging ? 'rgba(249,115,22,0.06)' : S.surface,
-              padding: '32px 20px',
+              padding: media.audio ? '16px 20px' : '32px 20px',
               textAlign: 'center',
               cursor: 'pointer',
               transition: 'all 0.15s',
-              flex: uploads.length === 0 ? 1 : 'none',
+              flex: uploads.length === 0 && !media.audio ? 1 : 'none',
             }}
           >
-            <div style={{ fontSize: 44, marginBottom: 12 }}>📂</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: S.text, marginBottom: 6 }}>
-              Drop anything here
+            <div style={{ fontSize: media.audio ? 28 : 44, marginBottom: 8 }}>📂</div>
+            <div style={{ fontSize: media.audio ? 14 : 18, fontWeight: 700, color: S.text, marginBottom: 4 }}>
+              {media.audio ? 'Add more files' : 'Drop anything here'}
             </div>
-            <div style={{ fontSize: 16, color: S.dim, lineHeight: 1.7 }}>
-              OBD screenshots · engine audio · dashboard photos<br />
-              under-hood video · scan tool exports
-            </div>
+            {!media.audio && (
+              <div style={{ fontSize: 16, color: S.dim, lineHeight: 1.7 }}>
+                OBD screenshots · engine audio · dashboard photos<br />
+                under-hood video · scan tool exports
+              </div>
+            )}
             <div style={{
-              marginTop: 14,
+              marginTop: 10,
               display: 'inline-block',
               background: 'rgba(249,115,22,0.12)',
               color: S.orange,
               border: `1px solid rgba(249,115,22,0.3)`,
-              borderRadius: 6, padding: '7px 20px',
-              fontSize: 16, fontWeight: 700,
+              borderRadius: 6, padding: '6px 16px',
+              fontSize: 14, fontWeight: 700,
             }}>
               + Choose Files
             </div>
