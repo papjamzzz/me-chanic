@@ -160,6 +160,14 @@ export interface ReportCause {
   parts: string;
   labor: string;
   models_agree: boolean;  // true if 2+ models support this
+  // Enhanced fields
+  priority?: 'SAFETY CRITICAL' | 'MONITOR' | 'INFORMATIONAL';
+  partNumbers?: string;       // e.g. "Bosch 9644, NGK 4469"
+  whereToBuy?: string;        // e.g. "AutoZone, RockAuto, O'Reilly"
+  youtubeQuery?: string;      // search query to find repair video
+  diySteps?: string[];        // ordered DIY repair steps
+  diyDifficulty?: 'Easy' | 'Moderate' | 'Hard' | 'Pro Only';
+  timeEstimate?: string;      // e.g. "45 min"
 }
 
 export interface CostEstimate {
@@ -191,6 +199,11 @@ export interface DiagnosisResult {
   doNotAuthorize: boolean;
   doNotAuthorizeReason: string;
   doNotDrive: string[];
+
+  // Enhanced report fields
+  additionalScans?: string[];    // scans to run to narrow diagnosis
+  repairPriority?: string;       // "Fix immediately / Monitor / Can wait"
+  verdictStatement?: string;     // single sentence verdict: "This is most likely X"
 
   // Meta
   fiveI: FiveIResult | null;  // null in demo mode

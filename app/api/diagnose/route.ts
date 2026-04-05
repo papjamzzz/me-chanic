@@ -265,38 +265,156 @@ async function runParallelDiagnosis(prompt: string): Promise<ModelOutput[]> {
   return settled.filter((o): o is ModelOutput => o !== null);
 }
 
+// ── Enrichment: get parts, DIY steps, YouTube queries per cause ───────────────
+
+async function enrichCauses(vehicle: any, causes: { name: string; confidence: number }[]): Promise<any[]> {
+  if (!OPENAI_KEY || causes.length === 0) return causes;
+  try {
+    const yr = vehicle.year, mk = vehicle.make, mo = vehicle.model, eng = vehicle.engine || '';
+    const causeList = causes.map((c, i) => `${i + 1}. ${c.name} (${c.confidence}% likely)`).join('\n');
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        max_tokens: 1200,
+        temperature: 0.3,
+        messages: [{
+          role: 'system',
+          content: 'You are an expert auto parts and repair advisor. Return ONLY valid JSON, no markdown.',
+        }, {
+          role: 'user',
+          content: `Vehicle: ${yr} ${mk} ${mo} ${eng}
+Diagnoses to enrich:
+${causeList}
+
+For each diagnosis return enriched data as JSON array:
+[
+  {
+    "name": "exact diagnosis name",
+    "priority": "SAFETY CRITICAL" | "MONITOR" | "INFORMATIONAL",
+    "parts": "$XX–$XXX (specific part name)",
+    "partNumbers": "e.g. Bosch 9644, NGK 4469 (or 'varies by trim')",
+    "whereToBuy": "AutoZone / RockAuto / O'Reilly / Dealership",
+    "labor": "$XXX–$XXX (hours estimate)",
+    "diyDifficulty": "Easy" | "Moderate" | "Hard" | "Pro Only",
+    "timeEstimate": "e.g. 30 min",
+    "youtubeQuery": "search query string to find repair video e.g. '2005 Volvo S40 spark plug replacement'",
+    "diySteps": ["Step 1: ...", "Step 2: ...", "Step 3: ..."]
+  }
+]`,
+        }],
+      }),
+    });
+    if (res.ok) {
+      const j = await res.json();
+      const text = j.choices?.[0]?.message?.content ?? '[]';
+      return JSON.parse(text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+    }
+  } catch (e) {
+    console.warn('Enrichment failed:', e);
+  }
+  return causes;
+}
+
+// ── Additional scans + verdict ─────────────────────────────────────────────────
+
+async function generateVerdict(vehicle: any, topCause: string, codes: string[]): Promise<{ verdict: string; additionalScans: string[]; costEstimate: any }> {
+  if (!OPENAI_KEY) return { verdict: `Most likely: ${topCause}`, additionalScans: [], costEstimate: { diy: '$50–$300', shop: '$300–$1,200', worstCase: '$1,500–$4,000' } };
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        max_tokens: 400,
+        temperature: 0.3,
+        messages: [{
+          role: 'user',
+          content: `Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model}. Codes: ${codes.join(', ') || 'none'}. Top diagnosis: ${topCause}.
+
+Return JSON only:
+{
+  "verdict": "One confident sentence: e.g. 'This vehicle has a misfiring cylinder, most likely caused by worn spark plugs or a failed ignition coil on cylinder 3.'",
+  "additionalScans": ["scan or test to run", "e.g. cylinder balance test", "e.g. fuel pressure test"],
+  "costEstimate": {
+    "diy": "$XX–$XXX",
+    "shop": "$XXX–$X,XXX",
+    "worstCase": "$X,XXX–$X,XXX"
+  }
+}`,
+        }],
+      }),
+    });
+    if (res.ok) {
+      const j = await res.json();
+      const text = j.choices?.[0]?.message?.content ?? '{}';
+      return JSON.parse(text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+    }
+  } catch (e) {
+    console.warn('Verdict failed:', e);
+  }
+  return { verdict: `Most likely: ${topCause}`, additionalScans: [], costEstimate: { diy: '$50–$300', shop: '$300–$1,200', worstCase: '$1,500–$4,000' } };
+}
+
 // ── Result builder ────────────────────────────────────────────────────────────
 
-function buildResult(data: any, fiveI: any, modelsUsed: string[], mediaFindings: string[]): DiagnosisResult {
+async function buildResult(data: any, fiveI: any, modelsUsed: string[], mediaFindings: string[]): Promise<DiagnosisResult> {
   const { guardrails, top_hypotheses, recommended_next_test, evidence_map } = fiveI;
 
-  const causes: ReportCause[] = top_hypotheses.slice(0, 3).map((hyp: any, idx: number) => ({
-    rank: idx + 1,
+  const baseCauses = top_hypotheses.slice(0, 3).map((hyp: any, idx: number) => ({
     name: hyp.name,
     confidence: Math.round(hyp.support_score * 100),
     why: `Based on ${hyp.evidence_used?.join(', ') || 'reported symptoms'}.`,
-    parts: '$50–$400',
-    labor: '$150–$600',
     models_agree: idx === 0 || modelsUsed.length >= 2,
   }));
+
+  // Run enrichment + verdict in parallel
+  const [enriched, verdictData] = await Promise.all([
+    enrichCauses(data.vehicle, baseCauses),
+    generateVerdict(data.vehicle, baseCauses[0]?.name || 'unknown issue', data.codes.dtcs.concat(data.codes.pending)),
+  ]);
+
+  const causes: ReportCause[] = baseCauses.map((base: any, idx: number) => {
+    const e = enriched[idx] || {};
+    return {
+      rank: idx + 1,
+      name: e.name || base.name,
+      confidence: base.confidence,
+      why: base.why,
+      parts: e.parts || '$50–$400',
+      labor: e.labor || '$150–$600',
+      models_agree: base.models_agree,
+      priority: e.priority || (idx === 0 ? 'SAFETY CRITICAL' : 'MONITOR'),
+      partNumbers: e.partNumbers,
+      whereToBuy: e.whereToBuy,
+      youtubeQuery: e.youtubeQuery,
+      diySteps: e.diySteps,
+      diyDifficulty: e.diyDifficulty,
+      timeEstimate: e.timeEstimate,
+    };
+  });
 
   const safeTodriveLabel =
     guardrails.safe_to_drive === 'yes' ? 'YES' :
     guardrails.safe_to_drive === 'caution' ? 'CAUTION' : 'NO';
 
   const mediaNote = mediaFindings.length > 0
-    ? `\n\nMedia analyzed: ${mediaFindings.length} file(s) — codes and readings extracted from your uploads were factored into this diagnosis.`
+    ? ` ${mediaFindings.length} media file(s) analyzed and factored into this diagnosis.`
     : '';
+
+  const shopScript = `Hi, I have a ${data.vehicle.year} ${data.vehicle.make} ${data.vehicle.model}${data.vehicle.miles ? ` with ${data.vehicle.miles} miles` : ''}. I ran an AI diagnostic that flagged ${causes[0]?.name || 'a fault'} as the most likely issue${data.codes.dtcs.length > 0 ? ` — codes: ${data.codes.dtcs.join(', ')}` : ''}. Before I authorize any work, can you confirm with your scanner and give me a written estimate? I already know what parts should cost.`;
 
   return {
     urgency: guardrails.urgency,
     urgencyLabel:
-      guardrails.urgency === 'high' ? '🚨 DO NOT DRIVE' :
-      guardrails.urgency === 'medium' ? '⚠️ MONITOR CLOSELY' : '✅ NOT URGENT',
+      guardrails.urgency === 'high' ? 'DO NOT DRIVE' :
+      guardrails.urgency === 'medium' ? 'MONITOR CLOSELY' : 'NOT URGENT',
     safeTodriveLabel,
     summary: (fiveI.model_agreement_summary || 'Analysis complete.') + mediaNote,
+    verdictStatement: verdictData.verdict,
     causes,
-    mediaFindings: mediaFindings.map((f, i) => ({
+    mediaFindings: mediaFindings.map((f) => ({
       type: f.startsWith('[Audio]') ? 'audio' as const : 'obd_image' as const,
       finding: f,
       confidence: 0.8,
@@ -305,15 +423,16 @@ function buildResult(data: any, fiveI: any, modelsUsed: string[], mediaFindings:
     codesAnalyzed: data.codes.dtcs.concat(data.codes.pending),
     nextSteps: [
       ...(recommended_next_test ? [recommended_next_test.action] : []),
-      'Get a quote from at least two shops before authorizing repairs',
-      'Share this report with your mechanic — it has the codes and evidence already laid out',
+      'Get written estimates from at least two shops before authorizing any work',
+      'Show this report to your mechanic — it has all codes and evidence already laid out',
     ],
     discriminativeTest: recommended_next_test,
-    costEstimate: { diy: '$50–$300', shop: '$300–$1,200', worstCase: '$1,500–$4,000' },
-    shopScript: `I had an AI diagnostic engine analyze my ${data.vehicle.year} ${data.vehicle.make} ${data.vehicle.model}. It flagged ${causes[0]?.name || 'an issue'} as the most likely cause based on my fault codes and sensor data. Can you confirm with your scanner before we discuss repairs?`,
+    costEstimate: verdictData.costEstimate,
+    shopScript,
     doNotAuthorize: guardrails.do_not_authorize_major_repair,
     doNotAuthorizeReason: guardrails.reason,
     doNotDrive: guardrails.safe_to_drive === 'no' ? ['Critical fault detected — do not drive until inspected'] : [],
+    additionalScans: verdictData.additionalScans,
     fiveI,
     zip: data.vehicle.zip,
     modelsUsed,
@@ -391,7 +510,7 @@ export async function POST(req: Request): Promise<Response> {
     const fiveIResult = runFiveI({ modelOutputs, ruleContext });
 
     // ── Build result ──────────────────────────────────────────────────────────
-    const result = buildResult(data, fiveIResult, modelsUsed, allMediaFindings);
+    const result = await buildResult(data, fiveIResult, modelsUsed, allMediaFindings);
 
     return new Response(JSON.stringify(result), {
       status: 200,
