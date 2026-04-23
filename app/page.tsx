@@ -397,10 +397,23 @@ export default function Home() {
       addImage(data.media.dash);
       addImage(data.media.leak);
 
+      // Spectrogram canvas → PNG → send to vision AI
+      if (spectrogramCanvas) {
+        await new Promise<void>((resolve) => {
+          spectrogramCanvas.toBlob((blob) => {
+            if (blob) {
+              form.append(`image_${imgIdx++}`, blob, 'engine-spectrogram.png');
+              addEvent('vision', 'Spectrogram image captured — sending frequency analysis to GPT-4o Vision…');
+            }
+            resolve();
+          }, 'image/png');
+        });
+      }
+
       // Audio / video
       if (data.media.audio) {
         form.append('audio', data.media.audio, data.media.audio.name);
-        addEvent('audio', `Sending audio for spectrogram analysis: ${data.media.audio.name}`);
+        addEvent('audio', `Sending audio for Whisper + mechanical interpretation: ${data.media.audio.name}`);
       }
       if (data.media.video) form.append('video', data.media.video, data.media.video.name);
 

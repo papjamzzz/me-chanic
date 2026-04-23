@@ -12,11 +12,30 @@ const GEMINI_KEY    = process.env.GEMINI_API_KEY ?? '';
 
 // ── Vision: extract diagnostic info from an image ─────────────────────────────
 
-async function analyzeImage(buf: Buffer, mime: string, idx: number): Promise<string> {
+async function analyzeImage(buf: Buffer, mime: string, idx: number, filename?: string): Promise<string> {
   const b64 = buf.toString('base64');
   const imageUrl = `data:${mime};base64,${b64}`;
 
-  const prompt = `This image is from a car diagnostic session (OBD scan tool screenshot, dashboard photo, warning light photo, or under-hood photo).
+  const isSpectrogram = filename?.toLowerCase().includes('spectrogram');
+
+  const prompt = isSpectrogram
+    ? `This is a frequency spectrogram of a car engine sound recording. The X-axis is time, the Y-axis is frequency (Hz), and brightness/color intensity represents amplitude.
+
+Analyze for these automotive diagnostic frequency zones:
+- 80–200 Hz: Engine misfires, combustion irregularities
+- 200–500 Hz: Rod knock, bearing knock, piston slap
+- 500–1000 Hz: Exhaust leaks, valve train noise
+- 1000–3000 Hz: Belt noise, accessory bearing wear, serpentine/tensioner issues
+- 3000+ Hz: Turbo whine, high-frequency electrical interference
+
+Describe:
+1. Which frequency bands show the most energy/brightness
+2. Whether patterns are periodic (rhythmic = mechanical) or continuous (constant = resonance)
+3. Any transient spikes (one-time events) vs sustained noise
+4. Your best interpretation of what automotive fault this spectrogram pattern suggests
+
+Be specific. State which Hz range is dominant and what that typically means mechanically.`
+    : `This image is from a car diagnostic session (OBD scan tool screenshot, dashboard photo, warning light photo, or under-hood photo).
 
 Extract EVERYTHING diagnostic you can see:
 - Fault codes / DTCs (e.g. P0300, P0420)
@@ -464,11 +483,11 @@ export async function POST(req: Request): Promise<Response> {
     const data = JSON.parse(metaRaw);
 
     // Collect image files
-    const imageEntries: { buf: Buffer; mime: string }[] = [];
+    const imageEntries: { buf: Buffer; mime: string; name: string }[] = [];
     for (const [key, val] of form.entries()) {
       if (key.startsWith('image_') && val instanceof File) {
         const ab = await val.arrayBuffer();
-        imageEntries.push({ buf: Buffer.from(ab), mime: val.type || 'image/jpeg' });
+        imageEntries.push({ buf: Buffer.from(ab), mime: val.type || 'image/jpeg', name: val.name });
       }
     }
 
@@ -485,7 +504,7 @@ export async function POST(req: Request): Promise<Response> {
 
     // ── Media analysis (parallel) ─────────────────────────────────────────────
     const mediaPromises: Promise<string>[] = [
-      ...imageEntries.map((img, i) => analyzeImage(img.buf, img.mime, i)),
+      ...imageEntries.map((img, i) => analyzeImage(img.buf, img.mime, i, img.name)),
       ...(audioBuf ? [analyzeAudio(audioBuf, audioName)] : []),
     ];
     const allMediaFindings = (await Promise.all(mediaPromises)).filter(Boolean);
